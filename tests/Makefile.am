@@ -36,7 +36,9 @@ CLEANFILES = *.rrd \
 
 check_PROGRAMS = compat-cloexec
 if HAVE_STATIC_LIBRRD
+if BUILD_RRDGRAPH
 check_PROGRAMS += graph-security
+endif
 endif
 
 compat_cloexec_SOURCES = \

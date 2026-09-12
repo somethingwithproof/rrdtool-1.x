@@ -1,6 +1,7 @@
 #include "rrd_graph.h"
 
 #include <limits.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -72,10 +73,46 @@ static int test_vdef_overflow(void)
     return expect_overflow("VDEF");
 }
 
+static int test_percentiles(void)
+{
+    image_desc_t im;
+    graph_desc_t gdes[2];
+    rrd_value_t values[] = { NAN, 1.0, 3.0, 2.0 };
+    memset(&im, 0, sizeof(im));
+    memset(gdes, 0, sizeof(gdes));
+    im.gdes = gdes;
+    im.gdes_c = 2;
+    gdes[0].ds_cnt = 1;
+    gdes[0].step = 1;
+    gdes[0].end = 4;
+    gdes[0].data = values;
+    gdes[1].vidx = 0;
+    for (int variant = 0; variant < 2; ++variant) {
+        gdes[1].vf.op = variant ? VDEF_PERCENTNAN : VDEF_PERCENT;
+        for (int percentile = 0; percentile <= 100; percentile += 50) {
+            double expected = percentile == 100 ? 3 : percentile == 50 ? 2 : 1;
+            gdes[1].vf.param = percentile;
+            rrd_clear_error();
+            if (vdef_calc(&im, 1) != 0)
+                return 1;
+            if (!variant && percentile == 0) {
+                if (!isnan(gdes[1].vf.val))
+                    return 1;
+            } else if (gdes[1].vf.val != expected) {
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
 int main(void)
 {
-    /* Skip when the first overflowing row count cannot fit in long. */
-    if ((size_t) -1 / sizeof(rrd_value_t) >= (unsigned long) LONG_MAX)
-        return 77;
-    return test_cdef_overflow() || test_vdef_overflow();
+    int result = test_percentiles();
+    /* Skip only overflow cases when their row count cannot fit in long. */
+    if ((size_t) -1 / sizeof(rrd_value_t) < (unsigned long) LONG_MAX) {
+        result |= test_cdef_overflow();
+        result |= test_vdef_overflow();
+    }
+    return result;
 }

@@ -6054,7 +6054,7 @@ int vdef_calc(
     switch (dst->vf.op) {
     case VDEF_PERCENT:{
         rrd_value_t *array;
-        int       field;
+        size_t    field;
 
         if (steps == 0) {
             dst->vf.val = DNAN;
@@ -6080,8 +6080,10 @@ int vdef_calc(
         for (step = 0; step < steps; step++) {
             array[step] = data[step * src->ds_cnt];
         }
-        qsort(array, step, sizeof(double), vdef_percent_compar);
+        qsort(array, step, sizeof(rrd_value_t), vdef_percent_compar);
         field = round((dst->vf.param * (double) (steps - 1)) / 100.0);
+        if (field >= (size_t) steps)
+            field = (size_t) steps - 1;
         dst->vf.val = array[field];
         dst->vf.when = 0;   /* no time component */
         dst->vf.never = 1;
