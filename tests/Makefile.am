@@ -1,15 +1,14 @@
-TESTS = modify1 modify2 modify3 modify4 modify5 \
-	tune1 tune2 graph1 graph2 rpn1 rpn2 \
-	rrdcreate \
-	compat-cloexec \
-	dump-restore \
-	create-with-source-1 create-with-source-2 create-with-source-3 \
-	create-with-source-4 create-with-source-and-mapping-1 \
-	create-from-template-1 dcounter1 vformatter1 xport1 xport2 xport3 list1 \
-	pdp-calc1 graph3 graph4 graph5 graph-security
+script_tests = modify1 modify2 modify3 modify4 modify5 \
+	tune1 tune2 graph1 graph2 rpn1 \
+	rpn2 rrdcreate dump-restore create-with-source-1 create-with-source-2 \
+	create-with-source-3 create-with-source-4 create-with-source-and-mapping-1 create-from-template-1 dcounter1 \
+	vformatter1 xport1 xport2 xport3 list1 \
+	pdp-calc1 graph3 graph4 graph5
+
+TESTS = $(script_tests) $(check_PROGRAMS)
 
 EXTRA_DIST = Makefile.am \
-	functions $(filter-out $(check_PROGRAMS),$(TESTS)) \
+	functions $(script_tests) \
 	modify-test1.create.dump modify-test1.mod1.dump \
 	modify2-testa-create.dump modify2-testb-mod1.dump modify2-testc-mod1.dump \
 	modify-test3.create.dump modify-test3.mod1.dump \
@@ -35,9 +34,10 @@ CLEANFILES = *.rrd \
 	modify5-testa1-mod.dump.tmp modify5-testa2-mod.dump.tmp \
 	rpn1.out rpn1.output.out
 
-check_PROGRAMS = \
-	compat-cloexec \
-	graph-security
+check_PROGRAMS = compat-cloexec
+if HAVE_STATIC_LIBRRD
+check_PROGRAMS += graph-security
+endif
 
 compat_cloexec_SOURCES = \
 	test_compat-cloexec.c \

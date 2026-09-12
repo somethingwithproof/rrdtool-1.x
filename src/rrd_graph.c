@@ -75,14 +75,10 @@ static int graph_mul_overflow(
     size_t b,
     size_t *out)
 {
-#if defined(__GNUC__) || defined(__clang__)
-    return __builtin_mul_overflow(a, b, out);
-#else
     if (b != 0 && a > (size_t) -1 / b)
         return 1;
     *out = a * b;
     return 0;
-#endif
 }
 
 /* some constant definitions */
@@ -6099,10 +6095,11 @@ int vdef_calc(
         break;
     case VDEF_PERCENTNAN:{
         rrd_value_t *array;
-        int       field;
+        size_t    field;
+        size_t    array_bytes;
 
         /* count number of "valid" values */
-        int       nancount = 0;
+        size_t    nancount = 0;
 
         for (step = 0; step < steps; step++) {
             if (!isnan(data[step * src->ds_cnt])) {
@@ -6116,8 +6113,11 @@ int vdef_calc(
             dst->vf.never = 1;
             break;
         }
-        if ((array =
-             (rrd_value_t *) malloc(nancount * sizeof(double))) == NULL) {
+        if (graph_mul_overflow(nancount, sizeof(rrd_value_t), &array_bytes)) {
+            rrd_set_error("VDEF_PERCENTNAN: impossibly large allocation");
+            return -1;
+        }
+        if ((array = (rrd_value_t *) malloc(array_bytes)) == NULL) {
             rrd_set_error("malloc VDEV_PERCENT");
             return -1;
         }
@@ -6129,7 +6129,7 @@ int vdef_calc(
                 field++;
             }
         }
-        qsort(array, nancount, sizeof(double), vdef_percent_compar);
+        qsort(array, nancount, sizeof(rrd_value_t), vdef_percent_compar);
         field = round(dst->vf.param * (double) (nancount - 1) / 100.0);
         dst->vf.val = array[field];
         dst->vf.when = 0;   /* no time component */
