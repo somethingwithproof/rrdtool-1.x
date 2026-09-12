@@ -100,8 +100,11 @@ static inline int rrd_add_overflow(
 */
 #define __rrd_read_mmap(dst, dst_t, cnt) { \
     size_t wanted; \
-    if (rrd_mul_overflow(sizeof(dst_t), (size_t)(cnt), &wanted) || \
-        offset > rrd_file->file_len || \
+    if (rrd_mul_overflow(sizeof(dst_t), (size_t)(cnt), &wanted)) { \
+        rrd_set_error("header size overflow while reading " #dst); \
+        goto out_close; \
+    } \
+    if (offset > rrd_file->file_len || \
         wanted > rrd_file->file_len - offset) { \
         rrd_set_error("reached EOF while loading header " #dst); \
         goto out_close; \
@@ -113,8 +116,12 @@ static inline int rrd_add_overflow(
 #define __rrd_read_seq(dst, dst_t, cnt) { \
     size_t wanted; \
         size_t got; \
-    if (rrd_mul_overflow(sizeof(dst_t), (size_t)(cnt), &wanted) || \
-        wanted > rrd_file->file_len) { \
+    if (rrd_mul_overflow(sizeof(dst_t), (size_t)(cnt), &wanted)) { \
+        rrd_set_error("header size overflow while reading " #dst); \
+        goto out_close; \
+    } \
+    if (offset > rrd_file->file_len || \
+        wanted > rrd_file->file_len - offset) { \
         rrd_set_error("reached EOF while loading header " #dst); \
         goto out_close; \
     } \
@@ -137,6 +144,11 @@ static inline int rrd_add_overflow(
         size_t got; \
     if (rrd_mul_overflow(sizeof(dst_t), (size_t)(cnt), &wanted)) { \
         rrd_set_error("header size overflow while reading " #dst); \
+        goto out_close; \
+    } \
+    if (offset > rrd_file->file_len || \
+        wanted > rrd_file->file_len - offset) { \
+        rrd_set_error("reached EOF while loading header " #dst); \
         goto out_close; \
     } \
     if ((dst = (dst_t*)malloc(wanted)) == NULL) { \
@@ -288,6 +300,25 @@ rrd_file_t *rrd_open(
 
         if (rdwr & RRD_CREAT)
             goto out_done;
+
+        /* Check the actual object length before allocating header arrays. */
+        {
+            uint64_t object_size;
+            time_t object_mtime;
+            int status = rados_stat(rrd_file->rados->ioctx,
+                                    rrd_file->rados->oid,
+                                    &object_size, &object_mtime);
+            if (status < 0) {
+                rrd_set_error("could not stat RADOS object '%s': %s",
+                              file_name, strerror(-status));
+                goto out_close;
+            }
+            if (object_size > (size_t) -1) {
+                rrd_set_error("RADOS object '%s' is too large", file_name);
+                goto out_close;
+            }
+            rrd_file->file_len = (size_t) object_size;
+        }
 
         goto read_check;
     }
@@ -557,12 +588,8 @@ rrd_file_t *rrd_open(
      * "sizeof(record) * count" arithmetic.  A valid RRD must physically
      * contain ds_cnt ds_def_t and rra_cnt rra_def_t records, so a well-formed
      * file is never rejected, while a crafted count can no longer wrap size_t.
-     * The rados backend does not know its length here (file_len is filled in
-     * after the header is read), so it relies on the per-read overflow checks.
+     * This also applies to RADOS objects, whose length was queried above.
      */
-#ifdef HAVE_LIBRADOS
-    if (!rrd_file->rados)
-#endif
     {
         if (rrd->stat_head->ds_cnt == 0 ||
             rrd->stat_head->ds_cnt > rrd_file->file_len / sizeof(ds_def_t) ||
@@ -654,13 +681,6 @@ rrd_file_t *rrd_open(
                           file_name);
             goto out_close;
         }
-
-#ifdef HAVE_LIBRADOS
-        /* skip length checking for rados file */
-        if (rrd_file->rados) {
-            rrd_file->file_len = correct_len;
-        }
-#endif
 
         if (correct_len > rrd_file->file_len) {
             rrd_set_error("'%s' is too small (should be %ld bytes)",
