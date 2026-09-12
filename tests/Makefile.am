@@ -9,7 +9,7 @@ TESTS = modify1 modify2 modify3 modify4 modify5 \
 	pdp-calc1 graph3 graph4 graph5 graph-security
 
 EXTRA_DIST = Makefile.am \
-	functions $(TESTS) \
+	functions $(filter-out $(check_PROGRAMS),$(TESTS)) \
 	modify-test1.create.dump modify-test1.mod1.dump \
 	modify2-testa-create.dump modify2-testb-mod1.dump modify2-testc-mod1.dump \
 	modify-test3.create.dump modify-test3.mod1.dump \
@@ -45,4 +45,6 @@ compat_cloexec_SOURCES = \
 	${top_srcdir}/src/compat-cloexec.h
 
 graph_security_SOURCES = test_graph_security.c
+# Exercise internal graph functions that are not exported by the shared library.
+graph_security_LDFLAGS = -static
 graph_security_LDADD = ${top_builddir}/src/librrd.la

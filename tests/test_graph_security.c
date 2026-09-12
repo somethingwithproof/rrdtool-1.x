@@ -10,7 +10,8 @@ static int expect_overflow(
 {
     if (rrd_test_error() && strstr(rrd_get_error(), "impossibly large"))
         return 0;
-    fprintf(stderr, "%s overflow was not diagnosed\n", context);
+    fprintf(stderr, "%s overflow was not diagnosed: %s\n", context,
+            rrd_test_error() ? rrd_get_error() : "no librrd error");
     return 1;
 }
 
@@ -19,7 +20,7 @@ static int test_cdef_overflow(void)
     image_desc_t im;
     graph_desc_t gdes[2];
     rpnp_t    expression[2];
-    double    value = 1.0;
+    rrd_value_t value = 1.0;
 
     memset(&im, 0, sizeof(im));
     memset(gdes, 0, sizeof(gdes));
@@ -30,7 +31,7 @@ static int test_cdef_overflow(void)
     gdes[0].ds_cnt = 1;
     gdes[0].step = 1;
     gdes[0].start = 0;
-    gdes[0].end = LONG_MAX;
+    gdes[0].end = (long) ((size_t) -1 / sizeof(rrd_value_t) + 1);
     gdes[0].data = &value;
     gdes[1].gf = GF_CDEF;
     strcpy(gdes[1].vname, "overflow");
@@ -49,7 +50,7 @@ static int test_vdef_overflow(void)
 {
     image_desc_t im;
     graph_desc_t gdes[2];
-    double    value = 1.0;
+    rrd_value_t value = 1.0;
 
     memset(&im, 0, sizeof(im));
     memset(gdes, 0, sizeof(gdes));
@@ -59,7 +60,7 @@ static int test_vdef_overflow(void)
     gdes[0].ds_cnt = 1;
     gdes[0].step = 1;
     gdes[0].start = 0;
-    gdes[0].end = LONG_MAX;
+    gdes[0].end = (long) ((size_t) -1 / sizeof(rrd_value_t) + 1);
     gdes[0].data = &value;
     gdes[1].vidx = 0;
     gdes[1].vf.op = VDEF_PERCENT;
@@ -73,5 +74,8 @@ static int test_vdef_overflow(void)
 
 int main(void)
 {
+    /* Skip when the first overflowing row count cannot fit in long. */
+    if ((size_t) -1 / sizeof(rrd_value_t) >= (unsigned long) LONG_MAX)
+        return 77;
     return test_cdef_overflow() || test_vdef_overflow();
 }

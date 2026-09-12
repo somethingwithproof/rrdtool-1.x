@@ -1312,7 +1312,7 @@ int data_calc(
                     / im->gdes[gdi].step;
                 size_t    cdef_len;
 
-                if (graph_mul_overflow(cdef_rows, sizeof(double),
+                if (graph_mul_overflow(cdef_rows, sizeof(rrd_value_t),
                                        &cdef_len)) {
                     rrd_set_error("CDEF '%s' covers an impossibly "
                                   "large data range", im->gdes[gdi].vname);
@@ -6069,7 +6069,7 @@ int vdef_calc(
         {
             size_t    arraylen;
 
-            if (graph_mul_overflow((size_t) steps, sizeof(double),
+            if (graph_mul_overflow((size_t) steps, sizeof(rrd_value_t),
                                    &arraylen)) {
                 rrd_set_error("VDEF '%s' covers an impossibly large "
                               "data range", dst->vname);
