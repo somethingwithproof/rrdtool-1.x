@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 static int fail(
     const char *message)
@@ -33,19 +34,32 @@ int main(void)
     rrd_t     rrd;
     rrd_file_t *rrd_file;
     int       status;
+    int       fd;
+
+    /* ULONG_MAX must overflow the size_t byte count, not just allocate GBs. */
+    if (ULONG_MAX <= (size_t) -1 / sizeof(rrd_value_t))
+        return 77;
 
     builddir = getenv("BUILDDIR");
     if (builddir == NULL)
         builddir = ".";
-    status = snprintf(path, sizeof(path), "%s/rrd-open-security.rrd",
+    status = snprintf(path, sizeof(path), "%s/rrd-open-security-XXXXXX",
                       builddir);
     if (status < 0 || (size_t) status >= sizeof(path))
         return fail("temporary RRD path is too long");
 
-    remove(path);
+    fd = mkstemp(path);
+    if (fd < 0)
+        return fail("could not reserve the temporary RRD path");
+    if (close(fd) != 0) {
+        remove(path);
+        return fail("could not close the temporary RRD file");
+    }
     rrd_clear_error();
-    if (rrd_create_r(path, 60, 1, 2, args) != 0)
+    if (rrd_create_r(path, 60, 1, 2, args) != 0) {
+        remove(path);
         return fail("could not create the test RRD");
+    }
 
     rrd_init(&rrd);
     rrd_file = rrd_open(path, &rrd, RRD_READWRITE | RRD_LOCK_NONE);
@@ -56,8 +70,12 @@ int main(void)
     }
 
     rrd.rra_def[0].row_cnt = ULONG_MAX;
-    rrd_close(rrd_file);
+    status = rrd_close(rrd_file);
     rrd_free(&rrd);
+    if (status != 0) {
+        remove(path);
+        return fail("could not persist the test RRD mutation");
+    }
 
     rrd_clear_error();
     rrd_init(&rrd);

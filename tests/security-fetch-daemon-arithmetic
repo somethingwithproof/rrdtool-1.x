@@ -26,7 +26,8 @@ BUILD=$BUILDDIR/$(basename $0)
 # oversized DS count needed: with a single DS and a 1-second-step RRA, the
 # same rows * ds_cnt * sizeof(double) product that rrd_fetch_fn() guards
 # against overflows with this one request.
-SOCK=$(mktemp -u /tmp/rrdcached-fetch-arith-XXXXXX).sock
+SOCKDIR=$(mktemp -d /tmp/rrdcached-fetch-arith-XXXXXX) || fail 1 "mktemp failed"
+SOCK="$SOCKDIR/cached.sock"
 PIDFILE=${BUILD}.pid
 LOG=${BUILD}-cached.log
 
@@ -43,6 +44,7 @@ cleanup() {
     kill -9 "$CACHED_PID" 2>/dev/null
   fi
   rm -f "$SOCK" "$PIDFILE"
+  rmdir "$SOCKDIR"
 }
 trap cleanup EXIT
 

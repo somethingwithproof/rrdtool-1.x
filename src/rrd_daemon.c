@@ -2296,7 +2296,8 @@ static int handle_request_fetchbin(
         return 0;
 
     /* create a buffer for the full binary line */
-    if (parsed.steps > (size_t) -1 / sizeof(double)) {
+    /* BinaryData record sizes/counts and their product use int. */
+    if (parsed.steps > INT_MAX / sizeof(double)) {
         free_fetch_parsed(&parsed);
         return send_response(sock, RESP_ERR, "Fetch range is too large\n");
     }
@@ -2336,7 +2337,7 @@ static int handle_request_fetchbin(
         if ((status = add_binary_response_info(sock,
                                  "DSName-",
                                  parsed.ds_namv[parsed.field_idx[i]],
-                                 dbuffer, parsed.steps, sizeof(double)
+                                 dbuffer, (int) parsed.steps, (int) sizeof(double)
             )))
             goto out;
     }
