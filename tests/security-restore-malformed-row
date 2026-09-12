@@ -2,21 +2,15 @@
 
 . "$(dirname "$0")/functions"
 
-BUILD="$BUILDDIR/$(basename "$0")"
+WORK=$(mktemp -d "$BUILDDIR/restore-bounds.XXXXXX") || fail 1 mktemp
+BUILD="$WORK/test"
+[ -n "$RRDCACHED_ADDRESS" ] && exit 77
+trap 'rm -rf "$WORK"' EXIT
 
-# Fixture found by the rrd_restore libFuzzer harness: a malformed <row>
-# element (a dropped '>' leaves the XML reader unable to find the end of
-# a <v> start tag) causes get_xml_element() to hit a genuine parse error
-# and return NULL on a later read, rather than immediately at the point
-# of the malformed tag. parse_tag_rra_database()'s parsing loop exits via
-# its while condition going false in that case, bypassing the loop body's
-# own "status != 0" error check entirely -- so the function used to fall
-# through to the row-rotation memcpy/memmove using a row count that no
-# longer matched how much of rrd_value was actually valid, reading past
-# the end of the buffer.
-# Keep the combined corruption from the fuzz reproducer: removing the stray
-# text/duplicate database makes the vulnerable build fail earlier in parsing
-# instead of reaching the row-rotation crash. The fixture has no external DTD.
+# Two well-formed database blocks in one RRA must be rejected. Re-entering
+# the database parser used to reset the allocation base while retaining the
+# first block's row count, leading to out-of-bounds row rotation.
+[ -n "$RRDCACHED_ADDRESS" ] && exit 77
 FIXTURE="$(dirname "$0")/security-restore-malformed-row.xml"
 
 $RRDTOOL restore -f "${FIXTURE}" "${BUILD}-out.rrd" >"${BUILD}.out" 2>&1
@@ -30,7 +24,9 @@ fi
 if [ -e "${BUILD}-out.rrd" ]; then
   fail 1 "restore left a partial output file behind after rejecting malformed input"
 fi
-report "reject malformed row tag without corrupting memory"
+grep -q 'multiple database elements' "${BUILD}.out" || \
+  fail 1 "duplicate database was not diagnosed"
+report "reject duplicate database without corrupting memory"
 
 # Cover the distinct path where XML parsing reaches EOF without an explicit
 # </database> element and without entering the loop body's status exit.
@@ -49,3 +45,21 @@ if [ -e "${BUILD}-eof.rrd" ]; then
   fail 1 "restore left output after rejecting truncated XML"
 fi
 report "reject database without an end tag"
+
+# Exercise missing and empty databases separately from XML parser failures.
+$RRDTOOL create "${BUILD}-valid.rrd" --start 900000000 --step 60 \
+  DS:value:GAUGE:120:U:U RRA:AVERAGE:0.5:1:5 || fail create
+$RRDTOOL dump "${BUILD}-valid.rrd" "${BUILD}-valid.xml" || fail dump
+for variant in missing empty unknown; do
+  case "$variant" in
+    missing) sed '/<database>/,/<\/database>/d' "${BUILD}-valid.xml" >"${BUILD}-edge.xml"; diagnostic='has no database rows' ;;
+    empty) sed '/<row>/d' "${BUILD}-valid.xml" >"${BUILD}-edge.xml"; diagnostic='zero rows' ;;
+    unknown) sed 's@<row>.*</row>@<unexpected>1</unexpected>@' "${BUILD}-valid.xml" >"${BUILD}-edge.xml"; diagnostic='found unexpected tag: unexpected' ;;
+  esac
+  $RRDTOOL restore -f "${BUILD}-edge.xml" "${BUILD}-edge.rrd" >"${BUILD}-edge.out" 2>&1
+  rc=$?
+  [ "$rc" -gt 0 ] && [ "$rc" -lt 128 ] || fail 1 "restore did not reject $variant database cleanly"
+  grep -q "$diagnostic" "${BUILD}-edge.out" || fail 1 "restore lost the $variant diagnostic"
+  [ ! -e "${BUILD}-edge.rrd" ] || fail 1 "restore left a partial database"
+done
+report "reject missing, empty, and malformed databases with specific errors"

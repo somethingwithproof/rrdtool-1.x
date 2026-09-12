@@ -471,10 +471,7 @@ static int parse_tag_rra_database(
             break;
     }
 
-    /* A row that failed to parse still went through the realloc/row_cnt++
-     * above, so total_row_cnt/cur_rra_def->row_cnt no longer agree with how
-     * much of rrd->rrd_value is actually valid.  Rotating rows below assumes
-     * a fully-parsed, consistent database, so bail out on any error. */
+    /* Only rotate a fully parsed database with a consistent row count. */
     if (status != 0)
         return status;
 
@@ -487,6 +484,13 @@ static int parse_tag_rra_database(
     if (!saw_end) {
         if (rrd_test_error() == 0)
             rrd_set_error("parse_tag_rra_database: unexpected end of file");
+        return -1;
+    }
+
+    if (cur_rra_def->row_cnt == 0) {
+        rrd_set_error("parse_tag_rra_database: RRA has zero rows "
+                      "(index %lu, CF %.20s)",
+                      rrd->stat_head->rra_cnt - 1, cur_rra_def->cf_nam);
         return -1;
     }
 
@@ -846,6 +850,7 @@ static int parse_tag_rra(
     rrd_t *rrd)
 {
     int       status;
+    int       saw_database = 0;
     xmlChar *element;
     
     rra_def_t *cur_rra_def;
@@ -936,6 +941,12 @@ static int parse_tag_rra(
         }        
         else if (xmlStrcasecmp(element, (const xmlChar *) "database") == 0){            
             xmlFree(element);
+            if (saw_database) {
+                rrd_set_error("RRA %lu contains multiple database elements",
+                              rrd->stat_head->rra_cnt - 1);
+                return -1;
+            }
+            saw_database = 1;
             status = parse_tag_rra_database(reader, rrd);
             if (status == 0)
                 continue;
@@ -944,6 +955,11 @@ static int parse_tag_rra(
         }
         else if (xmlStrcasecmp(element,(const xmlChar *) "/rra") == 0){
             xmlFree(element);
+            if (!saw_database || cur_rra_def->row_cnt == 0) {
+                rrd_set_error("RRA %lu has no database rows",
+                              rrd->stat_head->rra_cnt - 1);
+                return -1;
+            }
             return status;
         }  /* }}} */        
        else {
