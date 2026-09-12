@@ -32,7 +32,7 @@ static int test_cdef_overflow(void)
     gdes[0].ds_cnt = 1;
     gdes[0].step = 1;
     gdes[0].start = 0;
-    gdes[0].end = (long) ((size_t) -1 / sizeof(rrd_value_t) + 1);
+    gdes[0].end = (time_t) ((size_t) -1 / sizeof(rrd_value_t) + 1);
     gdes[0].data = &value;
     gdes[1].gf = GF_CDEF;
     strcpy(gdes[1].vname, "overflow");
@@ -61,7 +61,7 @@ static int test_vdef_overflow(void)
     gdes[0].ds_cnt = 1;
     gdes[0].step = 1;
     gdes[0].start = 0;
-    gdes[0].end = (long) ((size_t) -1 / sizeof(rrd_value_t) + 1);
+    gdes[0].end = (time_t) ((size_t) -1 / sizeof(rrd_value_t) + 1);
     gdes[0].data = &value;
     gdes[1].vidx = 0;
     gdes[1].vf.op = VDEF_PERCENT;
@@ -110,9 +110,11 @@ int main(void)
 {
     int result = test_percentiles();
     /* Skip only overflow cases when their row count cannot fit in long. */
-    if ((size_t) -1 / sizeof(rrd_value_t) < (unsigned long) LONG_MAX) {
+    if (sizeof(time_t) >= sizeof(size_t)) {
         result |= test_cdef_overflow();
         result |= test_vdef_overflow();
     }
+    else if (result == 0)
+        return 77;
     return result;
 }

@@ -1,3 +1,5 @@
+AM_CPPFLAGS = -I$(top_srcdir)/src -I$(top_builddir)/src
+
 script_tests = modify1 modify2 modify3 modify4 modify5 \
 	tune1 tune2 graph1 graph2 rpn1 \
 	rpn2 rrdcreate dump-restore create-with-source-1 create-with-source-2 \

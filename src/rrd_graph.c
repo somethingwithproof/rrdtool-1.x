@@ -62,6 +62,7 @@
 #endif
 
 #include "rrd_graph.h"
+#include <stdint.h>
 #include "rrd_client.h"
 
 /* CDEF/VDEF result buffers are sized from a row count derived as
@@ -1303,12 +1304,20 @@ int data_calc(
             free(steparray);
 
             {
-                size_t    cdef_rows = (im->gdes[gdi].end -
-                                       im->gdes[gdi].start)
-                    / im->gdes[gdi].step;
+                uintmax_t cdef_rows;
                 size_t    cdef_len;
-
-                if (graph_mul_overflow(cdef_rows, sizeof(rrd_value_t),
+                if (im->gdes[gdi].step == 0 ||
+                    im->gdes[gdi].end < im->gdes[gdi].start) {
+                    rrd_set_error("CDEF '%s' has an invalid data range",
+                                  im->gdes[gdi].vname);
+                    rpnstack_free(&rpnstack);
+                    return -1;
+                }
+                cdef_rows = ((uintmax_t) im->gdes[gdi].end -
+                             (uintmax_t) im->gdes[gdi].start) /
+                    im->gdes[gdi].step;
+                if (cdef_rows > (size_t) -1 / sizeof(rrd_value_t) ||
+                    graph_mul_overflow((size_t) cdef_rows, sizeof(rrd_value_t),
                                        &cdef_len)) {
                     rrd_set_error("CDEF '%s' covers an impossibly "
                                   "large data range", im->gdes[gdi].vname);
@@ -6045,7 +6054,18 @@ int vdef_calc(
     src = &im->gdes[dst->vidx];
     data = src->data + src->ds;
 
-    steps = (src->end - src->start) / src->step;
+    if (src->step == 0 || src->end < src->start) {
+        rrd_set_error("VDEF '%s' has an invalid data range", dst->vname);
+        return -1;
+    }
+    {
+        uintmax_t count = ((uintmax_t) src->end - (uintmax_t) src->start) / src->step;
+        if (count > LONG_MAX || count > (size_t) -1 / sizeof(rrd_value_t)) {
+            rrd_set_error("VDEF '%s' covers an impossibly large data range", dst->vname);
+            return -1;
+        }
+        steps = (long) count;
+    }
 #if 0
     printf
         ("DEBUG: start == %lu, end == %lu, %lu steps\n",
