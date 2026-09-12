@@ -74,3 +74,17 @@ rc=$?
 grep -q 'multiple database elements' "${BUILD}-duplicate.out" || fail 1 "duplicate database was not diagnosed"
 [ ! -e "${BUILD}-duplicate.rrd" ] || fail 1 "duplicate database left an output RRD"
 report "reject truncated and duplicate databases before writing an RRD"
+
+# Reject absent top-level data sources before any zero-size realloc.
+awk '
+ /<rra>/ { in_rra=1 }
+ !in_rra && /<ds>/ { skip=1 }
+ !skip { print }
+ !in_rra && /<\/ds>/ { skip=0 }
+' "${BUILD}-valid.xml" >"${BUILD}-no-ds.xml"
+$RRDTOOL restore -f "${BUILD}-no-ds.xml" "${BUILD}-no-ds.rrd" >"${BUILD}-no-ds.out" 2>&1
+rc=$?
+[ "$rc" -gt 0 ] && [ "$rc" -lt 128 ] || fail 1 "zero-data-source restore did not fail cleanly"
+grep -q 'at least one data source' "${BUILD}-no-ds.out" || fail 1 "missing data sources were not diagnosed"
+[ ! -e "${BUILD}-no-ds.rrd" ] || fail 1 "zero-data-source restore wrote an RRD"
+report "reject zero-data-source restore without a double free"

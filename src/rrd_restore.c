@@ -857,6 +857,11 @@ static int parse_tag_rra(
     cdp_prep_t *cur_cdp_prep;
     rra_ptr_t *cur_rra_ptr;
 
+    if (rrd->stat_head->ds_cnt == 0) {
+        rrd_set_error("RRA requires at least one data source");
+        return -1;
+    }
+
     /* Allocate more rra_def space for this RRA */
     {                   /* {{{ */
         rra_def_t *temp;
@@ -1348,6 +1353,11 @@ static rrd_t *parse_file(
 
     xmlFreeTextReader(reader);
 
+    if (status == 0 && !rrd_test_error() &&
+        (rrd->stat_head->ds_cnt == 0 || rrd->stat_head->rra_cnt == 0)) {
+        rrd_set_error("RRD requires at least one data source and RRA");
+        status = -1;
+    }
     if (status != 0 || rrd_test_error()) {
         local_rrd_free(rrd);
         rrd = NULL;
@@ -1426,6 +1436,7 @@ int rrd_restore(
     int       opt;
     rrd_t    *rrd;
 
+    rrd_clear_error();
     optparse_init(&options, argc, argv);
     while ((opt = optparse_long(&options, longopts, NULL)) != -1) {
         switch (opt) {
