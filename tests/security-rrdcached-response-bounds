@@ -75,28 +75,34 @@ if not update_resp.startswith(b"0 "):
     sys.exit(1)
 
 s.sendall(("PENDING " + relfile + "\n").encode())
-read_line()  # status line, e.g. "1 updates pending"
+assert read_line().startswith(b"1 "), "PENDING must advertise its one body line"
+body = read_line()
+expected = (ts_colon + "A" * (RRD_CMD_MAX - 2 - len(ts_colon))).encode()
+assert body == expected, "PENDING must clamp its body and preserve the newline"
 
-# gather whatever else the daemon sends until it stops
-s.settimeout(0.5)
-body = buf
-try:
-    while True:
-        chunk = s.recv(65536)
-        if not chunk:
-            break
-        body += chunk
-except socket.timeout:
-    pass
 
-expected = (ts_colon + "A" * (RRD_CMD_MAX - 1 - len(ts_colon))).encode()
+def ping():
+    s.sendall(b"PING\n")
+    assert read_line().startswith(b"0 "), "connection is out of sync"
 
-print("PENDING body length: %d (expected %d)" % (len(body), len(expected)))
-if body != expected:
-    print("PENDING response was not clamped to RRD_CMD_MAX - overrun bytes leaked")
-    sys.exit(1)
 
-print("PENDING response correctly bounded")
+ping()
+s.sendall(b"X" * 8000 + b"\n")
+error = read_line()
+assert error.startswith(b"-1 "), "oversized unknown command must fail"
+assert len(error) == RRD_CMD_MAX - 2, "status response is not bounded"
+ping()
+
+s.sendall(b"BATCH\n")
+assert read_line().startswith(b"0 "), "BATCH did not start"
+s.sendall(b"X" * 8000 + b"\n.\n")
+assert read_line().startswith(b"1 "), "BATCH must advertise its one error line"
+error = read_line()
+assert len(error) == RRD_CMD_MAX - 2, "BATCH error is not bounded"
+ping()
+s.close()
+print("PENDING, status, and BATCH responses are bounded and keep the connection in sync")
+
 PYEOF
 STATUS=$?
 
