@@ -1,6 +1,7 @@
 #!/bin/bash
 . "$(dirname "$0")/functions"
 [ -n "$RRDCACHED_ADDRESS" ] && exit 77
+[ -x "$BUILDDIR/mock-rados-bounds" ] || exit 77
 [ "$(getconf LONG_BIT)" = 64 ] || exit 77
 WORK=$(mktemp -d "$BUILDDIR/rados-bounds.XXXXXX") || fail 1 mktemp
 trap 'rm -rf "$WORK"' EXIT

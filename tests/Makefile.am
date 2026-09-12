@@ -53,6 +53,7 @@ rrd_open_security_LDADD = \
 # Compile the real RADOS read path against a local mock; no Ceph service needed.
 EXTRA_DIST += mock-rados/rados/librados.h security-rados-bounds
 if !MINGW_W64
+if HAVE_STATIC_LIBRRD
 script_tests += security-rados-bounds
 check_PROGRAMS += mock-rados-bounds
 mock_rados_bounds_SOURCES = test_rrd_rados_bounds.c ${top_srcdir}/src/rrd_open.c
@@ -60,4 +61,5 @@ mock_rados_bounds_CPPFLAGS = $(AM_CPPFLAGS) -DHAVE_LIBRADOS \
     -I$(srcdir)/mock-rados -I$(top_srcdir)/src -I$(top_builddir)/src
 mock_rados_bounds_LDFLAGS = -static
 mock_rados_bounds_LDADD = ${top_builddir}/src/librrd.la
+endif
 endif
