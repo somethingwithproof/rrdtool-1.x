@@ -171,6 +171,7 @@ AC_PROG_CPP
 AC_PROG_CC
 AM_PROG_CC_C_O
 LT_INIT
+AM_CONDITIONAL(HAVE_STATIC_LIBRRD,[test "x$enable_static" = "xyes"])
 
 dnl Try to detect/use GNU features
 CFLAGS="$CFLAGS -D_GNU_SOURCE"
