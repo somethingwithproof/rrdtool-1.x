@@ -923,6 +923,14 @@ static int parse_tag_rra(
         }
         else if (xmlStrcasecmp(element,(const xmlChar *) "/rra") == 0){
             xmlFree(element);
+            if (strcmp(cur_rra_def->cf_nam, "FAILURES") == 0 &&
+                (cur_rra_def->par[RRA_window_len].u_cnt < 1 ||
+                 cur_rra_def->par[RRA_window_len].u_cnt > MAX_FAILURES_WINDOW_LEN)) {
+                rrd_set_error("invalid RRA %lu: window_len %lu out of range",
+                              rrd->stat_head->rra_cnt - 1,
+                              cur_rra_def->par[RRA_window_len].u_cnt);
+                return -1;
+            }
             return status;
         }  /* }}} */        
        else {
