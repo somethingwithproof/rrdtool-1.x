@@ -1,16 +1,14 @@
-TESTS = modify1 modify2 modify3 modify4 modify5 \
-	tune1 tune2 graph1 graph2 rpn1 rpn2 \
-	rrdcreate \
-	compat-cloexec \
-	dump-restore \
-	create-with-source-1 create-with-source-2 create-with-source-3 \
-	create-with-source-4 create-with-source-and-mapping-1 \
-	create-from-template-1 dcounter1 vformatter1 xport1 xport2 xport3 list1 \
-	pdp-calc1 graph3 graph4 graph5 \
-	security-header-counts rrd-open-security
+script_tests = modify1 modify2 modify3 modify4 modify5 \
+	tune1 tune2 graph1 graph2 rpn1 \
+	rpn2 rrdcreate dump-restore create-with-source-1 create-with-source-2 \
+	create-with-source-3 create-with-source-4 create-with-source-and-mapping-1 create-from-template-1 dcounter1 \
+	vformatter1 xport1 xport2 xport3 list1 \
+	pdp-calc1 graph3 graph4 graph5 security-header-counts
+
+TESTS = $(script_tests) compat-cloexec rrd-open-security
 
 EXTRA_DIST = Makefile.am \
-	functions $(filter-out $(check_PROGRAMS),$(TESTS)) \
+	functions $(script_tests) \
 	modify-test1.create.dump modify-test1.mod1.dump \
 	modify2-testa-create.dump modify2-testb-mod1.dump modify2-testc-mod1.dump \
 	modify-test3.create.dump modify-test3.mod1.dump \
@@ -50,3 +48,15 @@ rrd_open_security_SOURCES = \
 
 rrd_open_security_LDADD = \
 	${top_builddir}/src/librrd.la
+
+# Compile the real RADOS read path against a local mock; no Ceph service needed.
+EXTRA_DIST += mock-rados/rados/librados.h security-rados-bounds
+if !MINGW_W64
+script_tests += security-rados-bounds
+check_PROGRAMS += mock-rados-bounds
+mock_rados_bounds_SOURCES = test_rrd_rados_bounds.c ${top_srcdir}/src/rrd_open.c
+mock_rados_bounds_CPPFLAGS = $(AM_CPPFLAGS) -DHAVE_LIBRADOS \
+    -I$(srcdir)/mock-rados -I$(top_srcdir)/src -I$(top_builddir)/src
+mock_rados_bounds_LDFLAGS = -static
+mock_rados_bounds_LDADD = ${top_builddir}/src/librrd.la
+endif

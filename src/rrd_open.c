@@ -20,6 +20,8 @@
 #include <limits.h>
 #endif                          /* WIN32 */
 
+#include <stdint.h>
+
 #include "rrd_tool.h"
 #include "compat-cloexec.h"
 #include "unused.h"
@@ -68,12 +70,20 @@ DWORD     dwCreationDisposition = 0;
  * otherwise wrap size_t, pass the "> file_len" bounds check, and alias or
  * iterate past the mapped file.
  */
+#if defined(__has_builtin)
+#define RRD_HAVE_OVERFLOW_BUILTINS (__has_builtin(__builtin_mul_overflow) && __has_builtin(__builtin_add_overflow))
+#elif defined(__GNUC__) && __GNUC__ >= 5
+#define RRD_HAVE_OVERFLOW_BUILTINS 1
+#else
+#define RRD_HAVE_OVERFLOW_BUILTINS 0
+#endif
+
 static inline int rrd_mul_overflow(
     size_t a,
     size_t b,
     size_t *out)
 {
-#if defined(__GNUC__) || defined(__clang__)
+#if RRD_HAVE_OVERFLOW_BUILTINS
     return __builtin_mul_overflow(a, b, out);
 #else
     *out = a * b;
@@ -86,7 +96,7 @@ static inline int rrd_add_overflow(
     size_t b,
     size_t *out)
 {
-#if defined(__GNUC__) || defined(__clang__)
+#if RRD_HAVE_OVERFLOW_BUILTINS
     return __builtin_add_overflow(a, b, out);
 #else
     *out = a + b;
@@ -104,8 +114,8 @@ static inline int rrd_add_overflow(
         rrd_set_error("header size overflow while reading " #dst); \
         goto out_close; \
     } \
-    if (offset > rrd_file->file_len || \
-        wanted > rrd_file->file_len - offset) { \
+    if (offset < 0 || (uintmax_t) offset > rrd_file->file_len || \
+        wanted > rrd_file->file_len - (size_t) offset) { \
         rrd_set_error("reached EOF while loading header " #dst); \
         goto out_close; \
     } \
@@ -120,8 +130,8 @@ static inline int rrd_add_overflow(
         rrd_set_error("header size overflow while reading " #dst); \
         goto out_close; \
     } \
-    if (offset > rrd_file->file_len || \
-        wanted > rrd_file->file_len - offset) { \
+    if (offset < 0 || (uintmax_t) offset > rrd_file->file_len || \
+        wanted > rrd_file->file_len - (size_t) offset) { \
         rrd_set_error("reached EOF while loading header " #dst); \
         goto out_close; \
     } \
@@ -146,8 +156,8 @@ static inline int rrd_add_overflow(
         rrd_set_error("header size overflow while reading " #dst); \
         goto out_close; \
     } \
-    if (offset > rrd_file->file_len || \
-        wanted > rrd_file->file_len - offset) { \
+    if (offset < 0 || (uintmax_t) offset > rrd_file->file_len || \
+        wanted > rrd_file->file_len - (size_t) offset) { \
         rrd_set_error("reached EOF while loading header " #dst); \
         goto out_close; \
     } \
@@ -326,13 +336,15 @@ rrd_file_t *rrd_open(
                                     &object_size, &object_mtime);
             if (status < 0) {
                 rrd_set_error("could not stat RADOS object '%s': %s",
-                              file_name, strerror(-status));
+                              file_name, rrd_strerror(-status));
                 goto out_close;
             }
-            if (object_size > (size_t) -1) {
+#if SIZE_MAX < UINT64_MAX
+            if (object_size > SIZE_MAX) {
                 rrd_set_error("RADOS object '%s' is too large", file_name);
                 goto out_close;
             }
+#endif
             rrd_file->file_len = (size_t) object_size;
         }
 
@@ -616,6 +628,10 @@ rrd_file_t *rrd_open(
             goto out_close;
         }
     }
+    if (rrd->stat_head->pdp_step == 0) {
+        rrd_set_error("header pdp_step is zero");
+        goto out_close;
+    }
     __rrd_read(rrd->ds_def, ds_def_t,
                rrd->stat_head->ds_cnt);
 
@@ -678,6 +694,10 @@ rrd_file_t *rrd_open(
         size_t    correct_len;
 
         for (ui = 0; ui < rrd->stat_head->rra_cnt; ui++) {
+            if (rrd->rra_def[ui].row_cnt == 0 || rrd->rra_def[ui].pdp_cnt == 0) {
+                rrd_set_error("'%s' RRA %lu has zero row_cnt/pdp_cnt", file_name, ui);
+                goto out_close;
+            }
             if (rrd_add_overflow(row_cnt, rrd->rra_def[ui].row_cnt,
                                  &row_cnt)) {
                 rrd_set_error("'%s' header describes an impossibly large database",
@@ -699,7 +719,7 @@ rrd_file_t *rrd_open(
         }
 
         if (correct_len > rrd_file->file_len) {
-            rrd_set_error("'%s' is too small (should be %ld bytes)",
+            rrd_set_error("'%s' is too small (should be %lld bytes)",
                           file_name, (long long) correct_len);
             goto out_close;
         }
