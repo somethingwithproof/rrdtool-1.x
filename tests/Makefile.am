@@ -10,7 +10,7 @@ TESTS = modify1 modify2 modify3 modify4 modify5 \
 	security-header-counts rrd-open-security
 
 EXTRA_DIST = Makefile.am \
-	functions $(TESTS) \
+	functions $(filter-out $(check_PROGRAMS),$(TESTS)) \
 	modify-test1.create.dump modify-test1.mod1.dump \
 	modify2-testa-create.dump modify2-testb-mod1.dump modify2-testc-mod1.dump \
 	modify-test3.create.dump modify-test3.mod1.dump \
