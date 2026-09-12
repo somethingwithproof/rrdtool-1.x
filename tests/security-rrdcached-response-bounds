@@ -100,6 +100,5 @@ print("PENDING response correctly bounded")
 PYEOF
 STATUS=$?
 
-stop_cached
 test $STATUS -eq 0 || fail 1 "oversized PENDING response was not bounded to the formatting buffer"
 report "PENDING response to an oversized cached UPDATE value is bounded"
