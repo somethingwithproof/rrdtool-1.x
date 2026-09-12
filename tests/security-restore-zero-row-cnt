@@ -2,9 +2,9 @@
 
 . "$(dirname "$0")/functions"
 
+[ -n "$RRDCACHED_ADDRESS" ] && exit 77
 WORK=$(mktemp -d "$BUILDDIR/restore-bounds.XXXXXX") || fail 1 mktemp
 BUILD="$WORK/test"
-[ -n "$RRDCACHED_ADDRESS" ] && exit 77
 trap 'rm -rf "$WORK"' EXIT
 
 $RRDTOOL create "${BUILD}.rrd" --start 900000000 --step 60 \
@@ -51,3 +51,26 @@ for variant in missing empty unknown; do
   [ ! -e "${BUILD}-edge.rrd" ] || fail 1 "restore left a partial database"
 done
 report "reject missing, empty, and malformed databases with specific errors"
+
+# EOF outside the database parser must also prevent write_file().
+for boundary in database params /database; do
+  awk -v tag="<$boundary>" 'index($0,tag) { exit } { print }' \
+    "${BUILD}-valid.xml" >"${BUILD}-truncated.xml"
+  $RRDTOOL restore -f "${BUILD}-truncated.xml" "${BUILD}-truncated.rrd" >"${BUILD}-truncated.out" 2>&1
+  rc=$?
+  [ "$rc" -gt 0 ] && [ "$rc" -lt 128 ] || fail 1 "truncated $boundary was not rejected cleanly"
+  [ ! -e "${BUILD}-truncated.rrd" ] || fail 1 "truncated $boundary left an output RRD"
+done
+# Duplicate a complete database without corrupting unrelated XML fields.
+awk '
+ /<database>/ { in_database=1; block="" }
+ in_database { block=block $0 "\n" }
+ { print }
+ /<\/database>/ { printf "%s",block; in_database=0 }
+' "${BUILD}-valid.xml" >"${BUILD}-duplicate.xml"
+$RRDTOOL restore -f "${BUILD}-duplicate.xml" "${BUILD}-duplicate.rrd" >"${BUILD}-duplicate.out" 2>&1
+rc=$?
+[ "$rc" -gt 0 ] && [ "$rc" -lt 128 ] || fail 1 "duplicate database was not rejected cleanly"
+grep -q 'multiple database elements' "${BUILD}-duplicate.out" || fail 1 "duplicate database was not diagnosed"
+[ ! -e "${BUILD}-duplicate.rrd" ] || fail 1 "duplicate database left an output RRD"
+report "reject truncated and duplicate databases before writing an RRD"
