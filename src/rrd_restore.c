@@ -470,7 +470,9 @@ static int parse_tag_rra_database(
     }
     
     if (cur_rra_def->row_cnt == 0) {
-        rrd_set_error("parse_tag_rra_database: RRA has zero rows");
+        rrd_set_error("parse_tag_rra_database: RRA has zero rows "
+                      "(index %lu, CF %.20s)",
+                      rrd->stat_head->rra_cnt - 1, cur_rra_def->cf_nam);
         return -1;
     }
 
