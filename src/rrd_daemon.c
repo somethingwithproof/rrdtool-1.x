@@ -2169,6 +2169,11 @@ static int handle_request_fetch_parse(
         parsed->field_cnt = 0;
         parsed->field_idx =
             malloc(sizeof(*parsed->field_idx) * parsed->ds_cnt);
+        if (parsed->field_idx == NULL) {
+            free_fetch_parsed(parsed);
+            send_response(sock, RESP_ERR, "Failed memory allocation\n");
+            return -1;
+        }
 
         /* now parse the extra names */
         while (buffer_get_field(&buffer, &buffer_size, &field) == 0) {
@@ -2283,13 +2288,14 @@ static int handle_request_fetchbin(
         return 0;
 
     /* create a buffer for the full binary line */
-    if (parsed.steps > (size_t) -1 / sizeof(double)) {
+    if (parsed.steps > INT_MAX / sizeof(double)) {
         free_fetch_parsed(&parsed);
         return send_response(sock, RESP_ERR, "Fetch range is too large\n");
     }
     dbuffer_size = sizeof(double) * parsed.steps;
     dbuffer = calloc(1, dbuffer_size);
     if (!dbuffer) {
+        free_fetch_parsed(&parsed);
         return (send_response(sock, RESP_ERR, "Failed memory allocation\n"));
     }
 
@@ -2313,7 +2319,7 @@ static int handle_request_fetchbin(
         add_binary_response_info(sock,
                                  "DSName-",
                                  parsed.ds_namv[parsed.field_idx[i]],
-                                 dbuffer, parsed.steps, sizeof(double)
+                                 dbuffer, (int) parsed.steps, (int) sizeof(double)
             );
     }
 
