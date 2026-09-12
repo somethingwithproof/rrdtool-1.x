@@ -299,7 +299,8 @@ int rrd_fetch_fn(
     rrd_t     rrd;
     rrd_file_t *rrd_file;
     rrd_value_t *data_ptr;
-    unsigned long rows;
+    size_t    rows;
+    size_t    data_values;
 
 #ifdef DEBUG
     fprintf(stderr, "Entered rrd_fetch_fn() searching for the best match\n");
@@ -449,7 +450,7 @@ int rrd_fetch_fn(
 
 #ifdef DEBUG
     fprintf(stderr,
-            "We found:    start %10lu end %10lu step %5lu rows  %lu\n",
+            "We found:    start %10lu end %10lu step %5lu rows  %zu\n",
             *start, *end, *step, rows);
 #endif
 
@@ -460,14 +461,17 @@ int rrd_fetch_fn(
 ** database is the one with time stamp (t+s) which means t to t+s.
 */
     *ds_cnt = rrd.stat_head->ds_cnt;
-    if (*ds_cnt != 0 &&
-        (rows > (size_t) -1 / *ds_cnt ||
-         rows * *ds_cnt > (size_t) -1 / sizeof(rrd_value_t))) {
+    if (*ds_cnt != 0 && rows > (size_t) -1 / (size_t) *ds_cnt) {
         rrd_set_error("fetch data size overflow");
         goto err_free_all_ds_namv;
     }
-    if (((*data) = (rrd_value_t *) malloc(*ds_cnt * rows *
-                                          sizeof(rrd_value_t))) == NULL) {
+    /* Widen before multiplying: unsigned long is only 32 bits on LLP64. */
+    data_values = rows * (size_t) *ds_cnt;
+    if (data_values > (size_t) -1 / sizeof(rrd_value_t)) {
+        rrd_set_error("fetch data size overflow");
+        goto err_free_all_ds_namv;
+    }
+    if (((*data) = (rrd_value_t *) malloc(data_values * sizeof(rrd_value_t))) == NULL) {
         rrd_set_error("malloc fetch data area");
         goto err_free_all_ds_namv;
     }
