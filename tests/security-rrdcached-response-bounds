@@ -1,6 +1,6 @@
 #!/bin/bash
 
-. $(dirname $0)/functions
+. "$(dirname "$0")/functions"
 
 # add_response_info() (src/rrd_daemon.c) formats each "extra" response
 # line into a fixed RRD_CMD_MAX-sized stack buffer with vsnprintf(), then
@@ -17,6 +17,8 @@
 
 command -v python3 >/dev/null 2>&1 || exit 77
 [ -n "$MSYSTEM" ] && exit 77
+[ -n "$RRDCACHED_ADDRESS" ] && exit 77
+[ -x "$TOP_BUILDDIR/src/rrdcached" ] || exit 77
 
 # AF_UNIX socket paths are capped at ~104 bytes on BSD/macOS; a checkout
 # under a long path (e.g. a deep CI workspace, or macOS's $TMPDIR) can

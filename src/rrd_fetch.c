@@ -243,7 +243,7 @@ int rrd_fetch_empty(
     char ***ds_namv,    /* names of data_sources */
     rrd_value_t **data)
 {
-    unsigned long rows;
+    size_t    rows;
 
     if (((*ds_namv) =
          (char **) malloc(sizeof(char *))) == NULL) {
@@ -257,21 +257,37 @@ int rrd_fetch_empty(
     }
 
     *ds_cnt = 1;
+    if (*end < *start) {
+        rrd_set_error("fetch end precedes start");
+        goto out_error;
+    }
     if (*step == 0) *step = (*end - *start) / 100;
+    if (*step == 0) {
+        rrd_set_error("fetch step is zero");
+        goto out_error;
+    }
     *start -= (*start % *step);
     *end += (*step - *end % *step);
     rows = (*end - *start) / *step + 1;
 
+    if (rows == 0 || rows > (size_t) -1 / sizeof(rrd_value_t)) {
+        rrd_set_error("fetch data size overflow");
+        goto out_error;
+    }
     if (((*data) = (rrd_value_t*)malloc(rows * sizeof(rrd_value_t))) == NULL) {
         rrd_set_error("malloc fetch data area");
-        free((*ds_namv)[0]);
-        free(*ds_namv);
-        return (-1);
+        goto out_error;
     }
 
-    while (--rows)
-        (*data)[rows-1] = DNAN;
+    while (rows > 0)
+        (*data)[--rows] = DNAN;
     return (0);
+
+  out_error:
+    free((*ds_namv)[0]);
+    free(*ds_namv);
+    *ds_namv = NULL;
+    return (-1);
 }
 
 int rrd_fetch_fn(

@@ -2169,6 +2169,11 @@ static int handle_request_fetch_parse(
         parsed->field_cnt = 0;
         parsed->field_idx =
             malloc(sizeof(*parsed->field_idx) * parsed->ds_cnt);
+        if (parsed->field_idx == NULL) {
+            free_fetch_parsed(parsed);
+            send_response(sock, RESP_ERR, "Failed memory allocation\n");
+            return -1;
+        }
 
         /* now parse the extra names */
         while (buffer_get_field(&buffer, &buffer_size, &field) == 0) {
