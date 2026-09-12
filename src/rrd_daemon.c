@@ -797,8 +797,10 @@ static int add_response_info(
     /* vsnprintf() returns the length that would have been written. Clamp
      * that length before passing the buffer to wbuf_append(), otherwise a
      * long formatted response makes wbuf_append() read past buffer. */
-    if ((size_t) len >= sizeof(buffer))
+    if ((size_t) len >= sizeof(buffer)) {
         len = sizeof(buffer) - 1;
+        buffer[len - 1] = '\n';
+    }
 
     return wbuf_append(sock, buffer, len);
 }                       /* }}} static int add_response_info */
@@ -894,7 +896,14 @@ static int send_response(
     if (len < 0)
         return -1;
 
-    len += rclen;
+    /* Clamp before adding the status prefix to avoid both an int overflow
+     * and a read past buffer. Truncated responses must still end a line. */
+    if ((size_t) len >= sizeof(buffer) - (size_t) rclen) {
+        len = sizeof(buffer) - 1;
+        buffer[len - 1] = '\n';
+    } else {
+        len += rclen;
+    }
 
     /* append the result to the wbuf, don't write to the user */
     if (sock->batch_start)
