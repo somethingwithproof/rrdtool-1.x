@@ -82,12 +82,12 @@ int lookup_seasonal(
 /* For the specified CDP prep area and the FAILURES RRA,
  * erase all history of past violations.
  */
-void erase_violations(
+int erase_violations(
     rrd_t *rrd,
     unsigned long cdp_idx,
     unsigned long rra_idx)
 {
-    unsigned short i;
+    unsigned long i;
     unsigned long window_len;
     char     *violations_array;
 
@@ -97,7 +97,7 @@ void erase_violations(
         fprintf(stderr, "erase_violations called for non-FAILURES RRA: %s\n",
                 rrd->rra_def[rra_idx].cf_nam);
 #endif
-        return;
+        return 0;
     }
 
     /* window_len comes straight from the on-disk rra_def and is not tied
@@ -110,7 +110,7 @@ void erase_violations(
     if (window_len > MAX_FAILURES_WINDOW_LEN) {
         rrd_set_error("erase_violations: window_len %lu for RRA %lu out of range",
                       window_len, rra_idx);
-        return;
+        return -1;
     }
 #ifdef DEBUG
     fprintf(stderr, "scratch buffer before erase:\n");
@@ -135,6 +135,7 @@ void erase_violations(
     }
     fprintf(stderr, "\n");
 #endif
+    return 0;
 }
 
 /* Smooth a periodic array with a moving average: equal weights and
@@ -394,7 +395,8 @@ void reset_aberrant_coefficients(
             }
             break;
         case CF_FAILURES:
-            erase_violations(rrd, cdp_idx, rra_idx);
+            if (erase_violations(rrd, cdp_idx, rra_idx) != 0)
+                return;
             break;
         default:
             break;
