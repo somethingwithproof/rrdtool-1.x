@@ -1348,7 +1348,7 @@ static rrd_t *parse_file(
 
     xmlFreeTextReader(reader);
 
-    if (status != 0) {
+    if (status != 0 || rrd_test_error()) {
         local_rrd_free(rrd);
         rrd = NULL;
     }
