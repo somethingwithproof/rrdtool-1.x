@@ -8,6 +8,7 @@
 
 # The on-disk format stores these counters as unsigned long.  The crafted
 # values below exercise the LP64 layout used by the supported Unix builds.
+[ -n "$MSYSTEM" ] && exit 77 # getconf describes MSYS, not the MinGW binary.
 test "$(getconf LONG_BIT)" = 64 || exit 77
 
 # RRDTOOL may contain the test harness command and wrapper arguments.
@@ -68,3 +69,23 @@ fi
 grep -q "reached EOF while loading header" "${BUILD}.out" || \
   fail 1 "truncated RRA header was not rejected before allocation"
 report "reject header array larger than remaining file bytes"
+
+# LP64 offsets: ds_cnt, rra_cnt, pdp_step, first RRA row_cnt and pdp_cnt.
+for offset in 24 32 40 272 280; do
+  cp "${BUILD}-ds.rrd" "${BUILD}-zero.rrd"
+  perl -0777 -pi -e 'BEGIN { $offset = shift @ARGV; } substr($_, $offset, 8, pack("Q", 0));' \
+    "$offset" "${BUILD}-zero.rrd"
+  for command in info fetch update; do
+    case "$command" in
+      info) args=() ;;
+      fetch) args=(AVERAGE --start 900000000 --end 900000120) ;;
+      update) args=(900000060:1) ;;
+    esac
+    $RRDTOOL "$command" "${BUILD}-zero.rrd" "${args[@]}" >"${BUILD}.out" 2>&1
+    status=$?
+    [ "$status" -ne 0 ] && [ "$status" -lt 128 ] || fail 1 "zero counter crashed or was accepted"
+    grep -Eq 'invalid ds_cnt/rra_cnt|pdp_step is zero|zero row_cnt/pdp_cnt' "${BUILD}.out" || \
+      fail 1 "zero counter was not diagnosed"
+  done
+done
+report "reject zero counters before info, fetch, and update"
