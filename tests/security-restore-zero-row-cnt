@@ -2,7 +2,10 @@
 
 . "$(dirname "$0")/functions"
 
-BUILD="$BUILDDIR/$(basename "$0")"
+WORK=$(mktemp -d "$BUILDDIR/restore-bounds.XXXXXX") || fail 1 mktemp
+BUILD="$WORK/test"
+[ -n "$RRDCACHED_ADDRESS" ] && exit 77
+trap 'rm -rf "$WORK"' EXIT
 
 $RRDTOOL create "${BUILD}.rrd" --start 900000000 --step 60 \
   DS:value:GAUGE:120:U:U RRA:AVERAGE:0.5:1:5 RRA:MAX:0.5:1:5 || fail create
@@ -30,3 +33,21 @@ fi
 grep -q "RRA has zero rows (index 0, CF AVERAGE)" "${BUILD}.out" || \
   fail 1 "zero-row RRA was not diagnosed cleanly"
 report "reject zero-row RRA on restore"
+
+# Exercise missing and empty databases separately from XML parser failures.
+$RRDTOOL create "${BUILD}-valid.rrd" --start 900000000 --step 60 \
+  DS:value:GAUGE:120:U:U RRA:AVERAGE:0.5:1:5 || fail create
+$RRDTOOL dump "${BUILD}-valid.rrd" "${BUILD}-valid.xml" || fail dump
+for variant in missing empty unknown; do
+  case "$variant" in
+    missing) sed '/<database>/,/<\/database>/d' "${BUILD}-valid.xml" >"${BUILD}-edge.xml"; diagnostic='has no database rows' ;;
+    empty) sed '/<row>/d' "${BUILD}-valid.xml" >"${BUILD}-edge.xml"; diagnostic='zero rows' ;;
+    unknown) sed 's@<row>.*</row>@<unexpected>1</unexpected>@' "${BUILD}-valid.xml" >"${BUILD}-edge.xml"; diagnostic='found unexpected tag: unexpected' ;;
+  esac
+  $RRDTOOL restore -f "${BUILD}-edge.xml" "${BUILD}-edge.rrd" >"${BUILD}-edge.out" 2>&1
+  rc=$?
+  [ "$rc" -gt 0 ] && [ "$rc" -lt 128 ] || fail 1 "restore did not reject $variant database cleanly"
+  grep -q "$diagnostic" "${BUILD}-edge.out" || fail 1 "restore lost the $variant diagnostic"
+  [ ! -e "${BUILD}-edge.rrd" ] || fail 1 "restore left a partial database"
+done
+report "reject missing, empty, and malformed databases with specific errors"

@@ -408,6 +408,7 @@ static int parse_tag_rra_database(
     rra_ptr_t *cur_rra_ptr;
     unsigned int total_row_cnt;
     int       status;
+    int       saw_end = 0;
     int       i;
     xmlChar *element;
     unsigned int start_row_cnt;
@@ -455,7 +456,8 @@ static int parse_tag_rra_database(
         } /* if (xmlStrcasecmp(element,"row")) */
         else {
             if ( xmlStrcasecmp(element,(const xmlChar *)"/database") == 0){
-                xmlFree(element);                
+                xmlFree(element);
+                saw_end = 1;
                 break;
             }
             else {
@@ -464,11 +466,27 @@ static int parse_tag_rra_database(
                 status = -1;
             }
         }
-        xmlFree(element);        
+        xmlFree(element);
         if (status != 0)
-            break;        
+            break;
     }
-    
+
+    /* Only rotate a fully parsed database with a consistent row count. */
+    if (status != 0)
+        return status;
+
+    /* The loop can also end because get_xml_element() itself hit a
+     * read/parse error (or true EOF without ever seeing </database>) --
+     * that path returns NULL straight out of the while condition, leaving
+     * status untouched, so it would otherwise be treated as if </database>
+     * had been found normally.  saw_end is only set on the real </database>
+     * exit, so reject anything else explicitly. */
+    if (!saw_end) {
+        if (rrd_test_error() == 0)
+            rrd_set_error("parse_tag_rra_database: unexpected end of file");
+        return -1;
+    }
+
     if (cur_rra_def->row_cnt == 0) {
         rrd_set_error("parse_tag_rra_database: RRA has zero rows "
                       "(index %lu, CF %.20s)",
@@ -832,6 +850,7 @@ static int parse_tag_rra(
     rrd_t *rrd)
 {
     int       status;
+    int       saw_database = 0;
     xmlChar *element;
     
     rra_def_t *cur_rra_def;
@@ -922,6 +941,12 @@ static int parse_tag_rra(
         }        
         else if (xmlStrcasecmp(element, (const xmlChar *) "database") == 0){            
             xmlFree(element);
+            if (saw_database) {
+                rrd_set_error("RRA %lu contains multiple database elements",
+                              rrd->stat_head->rra_cnt - 1);
+                return -1;
+            }
+            saw_database = 1;
             status = parse_tag_rra_database(reader, rrd);
             if (status == 0)
                 continue;
@@ -930,6 +955,11 @@ static int parse_tag_rra(
         }
         else if (xmlStrcasecmp(element,(const xmlChar *) "/rra") == 0){
             xmlFree(element);
+            if (!saw_database || cur_rra_def->row_cnt == 0) {
+                rrd_set_error("RRA %lu has no database rows",
+                              rrd->stat_head->rra_cnt - 1);
+                return -1;
+            }
             return status;
         }  /* }}} */        
        else {
