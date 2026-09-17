@@ -71,17 +71,6 @@
  * resolution.  A wide time range over a fine-grained RRA turns directly
  * into a row count large enough for "row_cnt * sizeof(double)" to wrap
  * size_t, so that arithmetic has to be range-checked before malloc(). */
-static int graph_mul_overflow(
-    size_t a,
-    size_t b,
-    size_t *out)
-{
-    if (b != 0 && a > (size_t) -1 / b)
-        return 1;
-    *out = a * b;
-    return 0;
-}
-
 /* some constant definitions */
 
 
@@ -1316,14 +1305,13 @@ int data_calc(
                 cdef_rows = ((uintmax_t) im->gdes[gdi].end -
                              (uintmax_t) im->gdes[gdi].start) /
                     im->gdes[gdi].step;
-                if (cdef_rows > (size_t) -1 / sizeof(rrd_value_t) ||
-                    graph_mul_overflow((size_t) cdef_rows, sizeof(rrd_value_t),
-                                       &cdef_len)) {
+                if (cdef_rows > (size_t) -1 / sizeof(rrd_value_t)) {
                     rrd_set_error("CDEF '%s' covers an impossibly "
                                   "large data range", im->gdes[gdi].vname);
                     rpnstack_free(&rpnstack);
                     return -1;
                 }
+                cdef_len = (size_t) cdef_rows * sizeof(rrd_value_t);
                 if ((im->gdes[gdi].data =
                      (rrd_value_t *) malloc(cdef_len)) == NULL) {
                     rrd_set_error("malloc im->gdes[gdi].data");
@@ -6082,17 +6070,8 @@ int vdef_calc(
             dst->vf.never = 1;
             break;
         }
-        {
-            size_t    arraylen;
-
-            if (graph_mul_overflow((size_t) steps, sizeof(rrd_value_t),
-                                   &arraylen)) {
-                rrd_set_error("VDEF '%s' covers an impossibly large "
-                              "data range", dst->vname);
-                return -1;
-            }
-            array = (rrd_value_t *) malloc(arraylen);
-        }
+        /* steps was bounded against SIZE_MAX above. */
+        array = malloc((size_t) steps * sizeof(*array));
         if (array == NULL) {
             rrd_set_error("malloc VDEV_PERCENT");
             return -1;
@@ -6118,7 +6097,6 @@ int vdef_calc(
     case VDEF_PERCENTNAN:{
         rrd_value_t *array;
         size_t    field;
-        size_t    array_bytes;
 
         /* count number of "valid" values */
         size_t    nancount = 0;
@@ -6135,11 +6113,8 @@ int vdef_calc(
             dst->vf.never = 1;
             break;
         }
-        if (graph_mul_overflow(nancount, sizeof(rrd_value_t), &array_bytes)) {
-            rrd_set_error("VDEF_PERCENTNAN: impossibly large allocation");
-            return -1;
-        }
-        if ((array = (rrd_value_t *) malloc(array_bytes)) == NULL) {
+        /* nancount cannot exceed the already bounded steps. */
+        if ((array = malloc(nancount * sizeof(*array))) == NULL) {
             rrd_set_error("malloc VDEV_PERCENT");
             return -1;
         }

@@ -106,9 +106,61 @@ static int test_percentiles(void)
     return 0;
 }
 
+static int test_invalid_ranges(void)
+{
+    image_desc_t im = {0};
+    graph_desc_t gdes[2] = {{0}};
+    rrd_value_t value = 1;
+    rpnp_t expression[2] = {{0}};
+    im.gdes = gdes;
+    im.gdes_c = 2;
+    gdes[0].ds_cnt = 1;
+    gdes[0].data = &value;
+    gdes[1].vidx = 0;
+    gdes[1].vf.op = VDEF_PERCENT;
+    for (int mode = 0; mode < 2; mode++) {
+        gdes[0].step = mode ? 1 : 0;
+        gdes[0].start = mode ? 2 : 0;
+        gdes[0].end = 1;
+        rrd_clear_error();
+        if (vdef_calc(&im, 1) == 0 ||
+            !strstr(rrd_get_error(), "invalid data range"))
+            return 1;
+    }
+    gdes[1].gf = GF_CDEF;
+    gdes[1].rpnp = expression;
+    expression[0].op = OP_VARIABLE;
+    expression[1].op = OP_END;
+    rrd_clear_error();
+    if (data_calc(&im) == 0 ||
+        !strstr(rrd_get_error(), "invalid data range"))
+        return 1;
+    return 0;
+}
+
+static int test_empty_percentiles(void)
+{
+    image_desc_t im = {0};
+    graph_desc_t gdes[2] = {{0}};
+    rrd_value_t value = NAN;
+    im.gdes = gdes;
+    im.gdes_c = 2;
+    gdes[0].step = 1;
+    gdes[0].ds_cnt = 1;
+    gdes[0].data = &value;
+    for (int mode = 0; mode < 2; mode++) {
+        gdes[0].end = mode;
+        gdes[1].vf.op = mode ? VDEF_PERCENTNAN : VDEF_PERCENT;
+        rrd_clear_error();
+        if (vdef_calc(&im, 1) != 0 || !isnan(gdes[1].vf.val))
+            return 1;
+    }
+    return 0;
+}
+
 int main(void)
 {
-    int result = test_percentiles();
+    int result = test_percentiles() | test_invalid_ranges() | test_empty_percentiles();
     /* Skip only overflow cases when their row count cannot fit in long. */
     if (sizeof(time_t) >= sizeof(size_t)) {
         result |= test_cdef_overflow();
