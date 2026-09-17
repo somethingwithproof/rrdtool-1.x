@@ -73,3 +73,16 @@ fetch_empty_security_SOURCES = test_fetch_empty_security.c
 fetch_empty_security_LDFLAGS = -static
 fetch_empty_security_LDADD = ${top_builddir}/src/librrd.la
 endif
+
+if BUILD_RRDCACHED
+if HAVE_STATIC_LIBRRD
+check_PROGRAMS += daemon-fetch-security
+TESTS += daemon-fetch-security
+daemon_fetch_security_SOURCES = test_daemon_fetch_security.c
+daemon_fetch_security_CPPFLAGS = -I$(top_srcdir)/src -I$(top_builddir)/src \
+    -DVERSION='"$(VERSION)"' -DLOCALSTATEDIR='"$(localstatedir)"'
+daemon_fetch_security_LDFLAGS = -static
+daemon_fetch_security_LDADD = $(top_builddir)/src/librrd.la \
+    $(top_builddir)/src/librrdupd.la $(ALL_LIBS)
+endif
+endif

@@ -22,7 +22,6 @@ jobs:
 
     - name: Build
       run: |
-        V=$(cat VERSION)
         ./bootstrap
         ./configure --prefix=/opt/rrdtool-master \
                     CFLAGS='-fprofile-arcs -ftest-coverage -O0' \
@@ -37,7 +36,7 @@ jobs:
     - name: Test bindings
       run: |
         (cd bindings/perl-shared && make test)
-        (cd bindings/python && sudo chown -R $USER . && python setup.py test)
+        (cd bindings/python && sudo chown -R "$USER" . && python setup.py test)
     - name: Run "rrdcached-tcp"
       run: |
         make check TESTS_STYLE="rrdcached-tcp"
@@ -53,7 +52,8 @@ jobs:
         podchecker doc/*.pod
     - name: gcov
       run: |
-        (cd src && gcov *.gcno)
-        (cd src && gcov .libs/*.gcno)
+        (cd src && gcov -p -l ./*.gcno)
+        (cd src && gcov -p -l .libs/*.gcno)
+        (cd tests && gcov -p -l ./*.gcno)
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v6
