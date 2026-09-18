@@ -54,11 +54,22 @@ jobs:
       run: |
         # Merge static, shared, and regression-test counters before upload.
         # Search build directories explicitly to skip configure's conftest files.
-        gcovr --root . --xml-pretty --output coverage.xml --print-summary src tests
+        gcovr --root . --xml-pretty --output coverage.xml \
+          --lcov coverage-full.info --print-summary src tests
+        # The existing Codecov baseline measures lines, not branch completeness.
+        # Retain all DA line counts, including zero-hit lines, for comparison.
+        sed '/^BRDA:/d; /^BRF:/d; /^BRH:/d' coverage-full.info > coverage.info
+    - name: Preserve full line and branch coverage
+      uses: actions/upload-artifact@v7
+      with:
+        name: coverage-full
+        path: |
+          coverage.xml
+          coverage-full.info
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v6
       with:
-        files: coverage.xml
+        files: coverage.info
         disable_search: true
         plugins: noop
 
@@ -96,7 +107,14 @@ jobs:
           -instr-profile=fuzz.profdata \
           fuzz/rrd_open_fuzzer \
           -object fuzz/rrd_restore_fuzzer \
-          >fuzz-coverage.info
+          >fuzz-coverage-full.info
+        sed '/^BRDA:/d; /^BRF:/d; /^BRH:/d' fuzz-coverage-full.info > fuzz-coverage.info
+
+    - name: Preserve full fuzz line and branch coverage
+      uses: actions/upload-artifact@v7
+      with:
+        name: fuzz-coverage-full
+        path: fuzz-coverage-full.info
 
     - name: Upload fuzz coverage to Codecov
       uses: codecov/codecov-action@v6
