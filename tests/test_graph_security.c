@@ -16,7 +16,7 @@ static int expect_overflow(
     return 1;
 }
 
-static int test_cdef_overflow(time_t end)
+static int test_cdef_overflow(time_t start, time_t end)
 {
     image_desc_t im;
     graph_desc_t gdes[2];
@@ -31,7 +31,7 @@ static int test_cdef_overflow(time_t end)
     im.gdes_c = 2;
     gdes[0].ds_cnt = 1;
     gdes[0].step = 1;
-    gdes[0].start = 0;
+    gdes[0].start = start;
     gdes[0].end = end;
     gdes[0].data = &value;
     gdes[1].gf = GF_CDEF;
@@ -64,11 +64,12 @@ static int test_vdef_overflow(void)
     gdes[0].end = (time_t) ((size_t) -1 / sizeof(rrd_value_t) + 1);
     gdes[0].data = &value;
     gdes[1].vidx = 0;
+    gdes[1].gf = GF_VDEF;
     gdes[1].vf.op = VDEF_PERCENT;
     strcpy(gdes[1].vname, "overflow");
 
     rrd_clear_error();
-    if (vdef_calc(&im, 1) == 0)
+    if (data_calc(&im) == 0)
         return 1;
     return expect_overflow("VDEF");
 }
@@ -119,12 +120,13 @@ static int test_invalid_ranges(void)
     gdes[0].data = &value;
     gdes[1].vidx = 0;
     gdes[1].vf.op = VDEF_PERCENT;
+    gdes[1].gf = GF_VDEF;
     for (int mode = 0; mode < 2; mode++) {
         gdes[0].step = mode ? 1 : 0;
         gdes[0].start = mode ? 2 : 0;
         gdes[0].end = 1;
         rrd_clear_error();
-        if (vdef_calc(&im, 1) == 0 ||
+        if (data_calc(&im) == 0 ||
             !strstr(rrd_get_error(), "invalid data range"))
             return 1;
     }
@@ -163,10 +165,11 @@ int main(void)
 {
     int result = test_percentiles(0) | test_percentiles(-4) | test_percentiles(-2) |
         test_invalid_ranges() | test_empty_percentiles();
-    /* Skip only overflow cases when their row count cannot fit in long. */
+    if (sizeof(time_t) > sizeof(int))
+        result |= test_cdef_overflow(0, (time_t) ((uintmax_t) INT_MAX + 1));
+    /* Allocation-bound cases require a representable end timestamp. */
     if (sizeof(time_t) >= sizeof(size_t)) {
-        result |= test_cdef_overflow((time_t) ((size_t) -1 / sizeof(rrd_value_t) + 1));
-        result |= test_cdef_overflow((time_t) INT_MAX + 1);
+        result |= test_cdef_overflow(0, (time_t) ((size_t) -1 / sizeof(rrd_value_t) + 1));
         result |= test_vdef_overflow();
     }
     else if (result == 0)

@@ -1175,8 +1175,9 @@ int data_calc(
              */
             im->gdes[gdi].ds_cnt = 0;
             if (vdef_calc(im, gdi)) {
-                rrd_set_error("Error processing VDEF '%s'",
-                              im->gdes[gdi].vname);
+                if (!rrd_test_error())
+                    rrd_set_error("Error processing VDEF '%s'",
+                                  im->gdes[gdi].vname);
                 rpnstack_free(&rpnstack);
                 return -1;
             }
