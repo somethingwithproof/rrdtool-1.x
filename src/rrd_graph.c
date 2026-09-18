@@ -1130,6 +1130,7 @@ int data_calc(
 
     int       gdi;
     int       dataidx;
+    uintmax_t cdef_rows;
     long     *steparray, rpi;
     long     *steparray_tmp;    /* temp variable for realloc() */
     int       stepcnt;
@@ -1293,7 +1294,6 @@ int data_calc(
             free(steparray);
 
             {
-                uintmax_t cdef_rows;
                 size_t    cdef_len;
                 if (im->gdes[gdi].step == 0 ||
                     im->gdes[gdi].end < im->gdes[gdi].start) {
@@ -1305,7 +1305,10 @@ int data_calc(
                 cdef_rows = ((uintmax_t) im->gdes[gdi].end -
                              (uintmax_t) im->gdes[gdi].start) /
                     im->gdes[gdi].step;
-                if (cdef_rows > (size_t) -1 / sizeof(rrd_value_t)) {
+                if (im->gdes[gdi].step > INT_MAX ||
+                    cdef_rows > INT_MAX ||
+                    cdef_rows > (size_t) -1 / sizeof(rrd_value_t) ||
+                    im->gdes[gdi].end > LONG_MAX) {
                     rrd_set_error("CDEF '%s' covers an impossibly "
                                   "large data range", im->gdes[gdi].vname);
                     rpnstack_free(&rpnstack);
@@ -1323,15 +1326,19 @@ int data_calc(
             /* Step through the new cdef results array and
              * calculate the values
              */
-            for (now = im->gdes[gdi].start + im->gdes[gdi].step;
-                 now <= im->gdes[gdi].end; now += im->gdes[gdi].step) {
+            /* rpn_calc uses an int result index and a long timestamp. The
+             * bounds above cover both. Advance only for an existing row so
+             * the final iteration never adds a step beyond time_t's range. */
+            now = im->gdes[gdi].start;
+            for (dataidx = 0; (uintmax_t) dataidx < cdef_rows; dataidx++) {
+                now = (time_t) ((uintmax_t) now + im->gdes[gdi].step);
 
                 /* 3rd arg of rpn_calc is for OP_VARIABLE lookups;
                  * in this case we are advancing by timesteps;
                  * we use the fact that time_t is a synonym for long
                  */
                 if (rpn_calc(rpnp, &rpnstack, (long) now,
-                             im->gdes[gdi].data, ++dataidx,
+                             im->gdes[gdi].data, dataidx,
                              im->gdes[gdi].step) == -1) {
                     /* rpn_calc sets the error string */
                     rpnstack_free(&rpnstack);
@@ -6081,8 +6088,6 @@ int vdef_calc(
         }
         qsort(array, step, sizeof(rrd_value_t), vdef_percent_compar);
         field = round((dst->vf.param * (double) (steps - 1)) / 100.0);
-        if (field >= (size_t) steps)
-            field = (size_t) steps - 1;
         dst->vf.val = array[field];
         dst->vf.when = 0;   /* no time component */
         dst->vf.never = 1;

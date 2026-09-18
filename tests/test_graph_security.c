@@ -16,7 +16,7 @@ static int expect_overflow(
     return 1;
 }
 
-static int test_cdef_overflow(void)
+static int test_cdef_overflow(time_t end)
 {
     image_desc_t im;
     graph_desc_t gdes[2];
@@ -32,7 +32,7 @@ static int test_cdef_overflow(void)
     gdes[0].ds_cnt = 1;
     gdes[0].step = 1;
     gdes[0].start = 0;
-    gdes[0].end = (time_t) ((size_t) -1 / sizeof(rrd_value_t) + 1);
+    gdes[0].end = end;
     gdes[0].data = &value;
     gdes[1].gf = GF_CDEF;
     strcpy(gdes[1].vname, "overflow");
@@ -73,7 +73,7 @@ static int test_vdef_overflow(void)
     return expect_overflow("VDEF");
 }
 
-static int test_percentiles(void)
+static int test_percentiles(time_t start)
 {
     image_desc_t im;
     graph_desc_t gdes[2];
@@ -84,7 +84,8 @@ static int test_percentiles(void)
     im.gdes_c = 2;
     gdes[0].ds_cnt = 1;
     gdes[0].step = 1;
-    gdes[0].end = 4;
+    gdes[0].start = start;
+    gdes[0].end = start + 4;
     gdes[0].data = values;
     gdes[1].vidx = 0;
     for (int variant = 0; variant < 2; ++variant) {
@@ -160,10 +161,12 @@ static int test_empty_percentiles(void)
 
 int main(void)
 {
-    int result = test_percentiles() | test_invalid_ranges() | test_empty_percentiles();
+    int result = test_percentiles(0) | test_percentiles(-4) | test_percentiles(-2) |
+        test_invalid_ranges() | test_empty_percentiles();
     /* Skip only overflow cases when their row count cannot fit in long. */
     if (sizeof(time_t) >= sizeof(size_t)) {
-        result |= test_cdef_overflow();
+        result |= test_cdef_overflow((time_t) ((size_t) -1 / sizeof(rrd_value_t) + 1));
+        result |= test_cdef_overflow((time_t) INT_MAX + 1);
         result |= test_vdef_overflow();
     }
     else if (result == 0)
