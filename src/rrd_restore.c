@@ -247,6 +247,7 @@ static int get_xml_string(
     if (str != NULL){
         if (strlen((char *)str) >= max_len){
             rrd_set_error("'%s' is longer than %i",str,max_len);
+            xmlFree(str);
             return -1;
         }            
         strncpy(value,(char *)str,max_len);
@@ -408,6 +409,7 @@ static int parse_tag_rra_database(
     rra_ptr_t *cur_rra_ptr;
     unsigned int total_row_cnt;
     int       status;
+    int       saw_end = 0;
     int       i;
     xmlChar *element;
     unsigned int start_row_cnt;
@@ -455,7 +457,8 @@ static int parse_tag_rra_database(
         } /* if (xmlStrcasecmp(element,"row")) */
         else {
             if ( xmlStrcasecmp(element,(const xmlChar *)"/database") == 0){
-                xmlFree(element);                
+                xmlFree(element);
+                saw_end = 1;
                 break;
             }
             else {
@@ -464,11 +467,34 @@ static int parse_tag_rra_database(
                 status = -1;
             }
         }
-        xmlFree(element);        
+        xmlFree(element);
         if (status != 0)
-            break;        
+            break;
     }
-    
+
+    /* Only rotate a fully parsed database with a consistent row count. */
+    if (status != 0)
+        return status;
+
+    /* The loop can also end because get_xml_element() itself hit a
+     * read/parse error (or true EOF without ever seeing </database>) --
+     * that path returns NULL straight out of the while condition, leaving
+     * status untouched, so it would otherwise be treated as if </database>
+     * had been found normally.  saw_end is only set on the real </database>
+     * exit, so reject anything else explicitly. */
+    if (!saw_end) {
+        if (rrd_test_error() == 0)
+            rrd_set_error("parse_tag_rra_database: unexpected end of file");
+        return -1;
+    }
+
+    if (cur_rra_def->row_cnt == 0) {
+        rrd_set_error("parse_tag_rra_database: RRA has zero rows "
+                      "(index %lu, CF %.20s)",
+                      rrd->stat_head->rra_cnt - 1, cur_rra_def->cf_nam);
+        return -1;
+    }
+
     /* Set the RRA pointer to a random location */
     cur_rra_ptr->cur_row = rrd_random() % cur_rra_def->row_cnt;
     
@@ -788,7 +814,8 @@ static int parse_tag_rra_params(
                           xmlTextReaderGetParserLineNumber(reader),element);
             status = -1;
         }
-        status = expect_element_end(reader,(char *)element);
+        if (status == 0)
+            status = expect_element_end(reader,(char *)element);
         xmlFree(element);        
         if (status != 0)
             break;
@@ -825,11 +852,17 @@ static int parse_tag_rra(
     rrd_t *rrd)
 {
     int       status;
+    int       saw_database = 0;
     xmlChar *element;
     
     rra_def_t *cur_rra_def;
     cdp_prep_t *cur_cdp_prep;
     rra_ptr_t *cur_rra_ptr;
+
+    if (rrd->stat_head->ds_cnt == 0) {
+        rrd_set_error("RRA requires at least one data source");
+        return -1;
+    }
 
     /* Allocate more rra_def space for this RRA */
     {                   /* {{{ */
@@ -915,6 +948,12 @@ static int parse_tag_rra(
         }        
         else if (xmlStrcasecmp(element, (const xmlChar *) "database") == 0){            
             xmlFree(element);
+            if (saw_database) {
+                rrd_set_error("RRA %lu contains multiple database elements",
+                              rrd->stat_head->rra_cnt - 1);
+                return -1;
+            }
+            saw_database = 1;
             status = parse_tag_rra_database(reader, rrd);
             if (status == 0)
                 continue;
@@ -923,6 +962,11 @@ static int parse_tag_rra(
         }
         else if (xmlStrcasecmp(element,(const xmlChar *) "/rra") == 0){
             xmlFree(element);
+            if (!saw_database || cur_rra_def->row_cnt == 0) {
+                rrd_set_error("RRA %lu has no database rows",
+                              rrd->stat_head->rra_cnt - 1);
+                return -1;
+            }
             return status;
         }  /* }}} */        
        else {
@@ -979,6 +1023,7 @@ static int parse_tag_ds_type(
         if (status == -1) {
             rrd_set_error("parse_tag_ds_type: Unknown data source type: %s",
                           dst);
+            xmlFree(dst);
             return -1;
         }
         strncpy(ds_def->dst,dst,sizeof(ds_def->dst)-1);
@@ -1311,7 +1356,12 @@ static rrd_t *parse_file(
 
     xmlFreeTextReader(reader);
 
-    if (status != 0) {
+    if (status == 0 && !rrd_test_error() &&
+        (rrd->stat_head->ds_cnt == 0 || rrd->stat_head->rra_cnt == 0)) {
+        rrd_set_error("RRD requires at least one data source and RRA");
+        status = -1;
+    }
+    if (status != 0 || rrd_test_error()) {
         local_rrd_free(rrd);
         rrd = NULL;
     }
@@ -1389,6 +1439,7 @@ int rrd_restore(
     int       opt;
     rrd_t    *rrd;
 
+    rrd_clear_error();
     optparse_init(&options, argc, argv);
     while ((opt = optparse_long(&options, longopts, NULL)) != -1) {
         switch (opt) {

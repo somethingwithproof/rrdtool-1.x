@@ -10,11 +10,15 @@ AM_CFLAGS = @CFLAGS@
 
 EXTRA_DIST = corpus
 
-noinst_PROGRAMS = rrd_open_fuzzer
+noinst_PROGRAMS = rrd_open_fuzzer rrd_restore_fuzzer
 
 rrd_open_fuzzer_SOURCES = rrd_open_fuzzer.c
 rrd_open_fuzzer_DEPENDENCIES = $(top_builddir)/src/librrd.la
 rrd_open_fuzzer_LDADD = $(top_builddir)/src/librrd.la
+
+rrd_restore_fuzzer_SOURCES = rrd_restore_fuzzer.c
+rrd_restore_fuzzer_DEPENDENCIES = $(top_builddir)/src/librrd.la
+rrd_restore_fuzzer_LDADD = $(top_builddir)/src/librrd.la
 
 # -fsanitize=fuzzer supplies libFuzzer's main()/driver and is what makes
 # this binary a fuzz target in the first place, so it belongs here rather
@@ -22,3 +26,4 @@ rrd_open_fuzzer_LDADD = $(top_builddir)/src/librrd.la
 # for whichever memory-safety sanitizers the caller wants -- see the
 # fuzz-smoke-test CI job).
 rrd_open_fuzzer_LDFLAGS = -static -fsanitize=fuzzer,address,undefined
+rrd_restore_fuzzer_LDFLAGS = -static -fsanitize=fuzzer,address,undefined

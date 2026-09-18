@@ -3,6 +3,10 @@ RRDtool - master ...
 ====================
 Bugfixes
 --------
+* Restore rejects unknown RRA parameter tags, incomplete XML, and missing,
+  duplicate, or empty databases instead of writing partial output. Unknown
+  parameter tags are errors, including tags from newer or third-party dumps.
+* Release XML strings on unknown data-source types and overlong values.
 * Reject malformed RRD header counts and truncated data sections before
   allocating or accessing arrays, including Ceph-backed RRDs. Ceph opens
   query object size before header reads; real-cluster latency is unmeasured.

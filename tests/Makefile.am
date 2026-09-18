@@ -62,3 +62,6 @@ mock_rados_bounds_LDFLAGS = -static
 mock_rados_bounds_LDADD = ${top_builddir}/src/librrd.la
 endif
 endif
+
+script_tests += security-restore-zero-row-cnt security-restore-malformed-row
+EXTRA_DIST += security-restore-malformed-row.xml
