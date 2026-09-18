@@ -94,15 +94,21 @@ jobs:
                     LDFLAGS='-fprofile-instr-generate -fcoverage-mapping'
         make
 
+    - name: Run instrumented open and restore regressions
+      run: |
+        mkdir -p /tmp/rrd-fuzz-profiles
+        LLVM_PROFILE_FILE='/tmp/rrd-fuzz-profiles/test-%p.profraw' \
+          make check TESTS="security-header-counts rrd-open-security security-rados-bounds security-restore-zero-row-cnt security-restore-malformed-row dump-restore"
+
     - name: Exercise seed corpora
       run: |
         mkdir -p /tmp/rrd-fuzz-corpus
         cp fuzz/corpus/* /tmp/rrd-fuzz-corpus/
-        LLVM_PROFILE_FILE='open-%p.profraw' \
+        LLVM_PROFILE_FILE='/tmp/rrd-fuzz-profiles/open-%p.profraw' \
           fuzz/rrd_open_fuzzer -seed=1 -runs=10000 /tmp/rrd-fuzz-corpus
-        LLVM_PROFILE_FILE='restore-%p.profraw' \
+        LLVM_PROFILE_FILE='/tmp/rrd-fuzz-profiles/restore-%p.profraw' \
           fuzz/rrd_restore_fuzzer -seed=1 -runs=10000 /tmp/rrd-fuzz-corpus
-        llvm-profdata merge -sparse ./*.profraw -o fuzz.profdata
+        llvm-profdata merge -sparse /tmp/rrd-fuzz-profiles/*.profraw -o fuzz.profdata
         llvm-cov export -format=lcov \
           -instr-profile=fuzz.profdata \
           fuzz/rrd_open_fuzzer \
