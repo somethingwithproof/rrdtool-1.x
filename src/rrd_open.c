@@ -1262,10 +1262,12 @@ static void free_rrd_ptr_if_not_mmapped(
         return;
     }
 
-    /* is this ALWAYS correct on all supported platforms ??? */
-    long      ofs = (char *) m - (char *) rrd->__mmap_start;
+    /* Allocated legacy headers can lie outside the mapped file. Comparing
+     * integer addresses avoids subtracting pointers to unrelated objects. */
+    uintptr_t address = (uintptr_t) m;
+    uintptr_t start = (uintptr_t) rrd->__mmap_start;
 
-    if (ofs < rrd->__mmap_size) {
+    if (address >= start && address - start < (uintptr_t) rrd->__mmap_size) {
         // DO NOT FREE, this memory is mmapped!!
         return;
     }
