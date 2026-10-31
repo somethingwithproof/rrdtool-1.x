@@ -544,7 +544,7 @@ static int set_hwarg(
     strtod_ret_val = rrd_strtodbl(arg, NULL, &param, NULL);
     /* read the value */
     if ((strtod_ret_val == 1 || strtod_ret_val == 2 ) &&
-         (param <= 0.0 || param >= 1.0) ) {
+         !(param > 0.0 && param < 1.0) ) {
         rrd_set_error("Holt-Winters parameter must be between 0 and 1");
         return -1;
     } else if( strtod_ret_val == 0 || strtod_ret_val > 2 ) {
@@ -584,7 +584,7 @@ static int set_hwsmootharg(
     /* in order to avoid smoothing of SEASONAL or DEVSEASONAL, we need to 
      * the 0.0 value*/
     if ( (strtod_ret_val == 1 || strtod_ret_val == 2 ) &&
-         (param < 0.0 || param > 1.0) ) {
+         !(param >= 0.0 && param <= 1.0) ) {
         rrd_set_error("Holt-Winters parameter must be between 0 and 1");
         return -1;
     } else if( strtod_ret_val == 0 || strtod_ret_val > 2 ) {
